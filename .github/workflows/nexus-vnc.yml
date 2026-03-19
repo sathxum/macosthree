@@ -8,7 +8,7 @@ on:
 
 jobs:
   deploy:
-    runs-on: macos-latest
+    runs-on: macos-12
     timeout-minutes: 360
     
     steps:
@@ -20,7 +20,7 @@ jobs:
         echo "╔════════════════════════════════════╗"
         echo "║   NEXUS macOS VNC v3.0             ║"
         echo "╚════════════════════════════════════╝"
-        echo "[INFO] OS: macOS (Latest)"
+        echo "[INFO] OS: macOS 12 (Monterey - Stable VNC Support)"
         echo "[INFO] Protocol: VNC (Screen Sharing)"
         echo "[INFO] Port: 5900"
         echo "[INFO] Visibility: PUBLIC"
@@ -34,30 +34,26 @@ jobs:
       
     - name: Configure VNC / Screen Sharing
       run: |
-        echo "[INFO] Enabling Remote Management..."
-        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -users Sinket -privs -all
+        echo "[INFO] Disabling Firewall to ensure VNC port is open..."
+        sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate off
+        
+        echo "[INFO] Enabling Remote Management and VNC Legacy..."
+        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -allowAccessFor -allUsers -privs -all
         sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvnclegacy -vnclegacy yes
         
-        echo "[INFO] Enabling Screen Sharing..."
-        sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist 2>/dev/null || true
-        
         echo "[INFO] Setting VNC password..."
-        echo "pcmb123&" | perl -e 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39567390ADCA" } $_ = <>; chomp; s/^(.{8}).*/$1/; @p = unpack "C*", $_; my $i = 0; foreach (@p) { printf "\%02X", $_ = (($_ >> 1) & 0x55) | (($_ << 1) & 0xAA) ^ $k[$i++]; } print "\n"' | sudo tee /Library/Preferences/com.apple.VNCSettings.txt > /dev/null
+        echo "Nexus@20" | perl -we 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39567390ADCA" } $_ = <>; chomp; s/^(.{8}).*/$1/; @p = unpack "C*", $_; my $i = 0; foreach (@p) { printf "\%02X", $_ = (($_ >> 1) & 0x55) | (($_ << 1) & 0xAA) ^ $k[$i++]; } print "\n"' | sudo tee /Library/Preferences/com.apple.VNCSettings.txt > /dev/null
         
-        echo "[INFO] Restarting ARD Agent to apply settings..."
-        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
+        echo "[INFO] Restarting ARD Agent and Screen Sharing..."
+        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -restart -agent
         
-        echo "[INFO] Configuring Firewall..."
-        sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add /System/Library/CoreServices/RemoteManagement/ARDAgent.app
-        sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp /System/Library/CoreServices/RemoteManagement/ARDAgent.app
-        
-        echo "[SUCCESS] VNC configured on port 5900"
+        echo "[SUCCESS] VNC configured on port 5900 using Legacy Authentication"
         
     - name: Create User Account
       run: |
-        echo "[INFO] Setting up user: Sinket"
-        sudo sysadminctl -addUser Sinket -password "pcmb123&" -admin
-        echo "[SUCCESS] User Sinket created with admin privileges"
+        echo "[INFO] Setting up user: runner"
+        sudo sysadminctl -addUser runner -password "Nexus@2024!" -admin
+        echo "[SUCCESS] User runner created with admin privileges"
         
     - name: Disable Sleep
       run: |
@@ -71,19 +67,17 @@ jobs:
       run: |
         echo "[INFO] Starting Ngrok tunnel on port 5900..."
         ngrok tcp 5900 &
-        sleep 5
+        sleep 10
         
         TUNNEL_INFO=$(curl -s http://localhost:4040/api/tunnels)
         if [ -n "$TUNNEL_INFO" ]; then
           echo "[SUCCESS] VNC Tunnel Established!"
           echo "========================================"
           echo "VNC Address: $(echo $TUNNEL_INFO | grep -o 'tcp://[^"]*' | head -1)"
-          echo "Username: Sinket"
-          echo "Password: pcmb123& (VNC limited to 8 chars)"
+          echo "Username: runner"
+          echo "Password: Nexus@20 (VNC limited to 8 chars)"
           echo "========================================"
-          echo "[INFO] Connect using VNC Viewer or Screen Sharing app"
-          echo "[INFO] macOS: Press Cmd+K in Finder, enter address"
-          echo "[INFO] Windows: Use RealVNC/TightVNC client"
+          echo "[INFO] Connect using any standard VNC Viewer (RealVNC, bVNC)"
         else
           echo "[ERROR] Failed to establish tunnel"
         fi
